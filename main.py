@@ -10,21 +10,22 @@ PGPORT = os.environ.get("PGPORT", "")
 PGUSER = os.environ.get("PGUSER", "")
 PGPASSWORD = os.environ.get("PGPASSWORD", "")
 POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
+TOKEN = os.environ.get("TOKEN", "")
 
-conn = psycopg2.connect(
-    dbname=POSTGRES_DB,
-    user=PGUSER,
-    password=PGPASSWORD,
-    host=PGHOST,
-    port=PGPORT
-)
-c = conn.cursor()
-
-request_file = "last_request.json"
-TOKEN = os.environ.get("TOKEN", "") 
-
-def parse_time(s):
-    return datetime.strptime(s, "%Y-%m-%d %H:%M")
+def save_request(data):
+    conn = psycopg2.connect(
+        dbname=POSTGRES_DB,
+        user=PGUSER,
+        password=PGPASSWORD,
+        host=PGHOST,
+        port=PGPORT
+    )
+    c = conn.cursor()
+    c.execute("DELETE FROM request")
+    c.execute("INSERT INTO request (data, updated_at) VALUES (%s, NOW())", (json.dumps(data),))
+    conn.commit()
+    c.close()
+    conn.close()
 
 async def rank_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 4:
@@ -32,8 +33,7 @@ async def rank_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     t_awal = context.args[0] + " " + context.args[1]
     t_akhir = context.args[2] + " " + context.args[3]
-    with open(request_file, "w", encoding="utf-8") as f:
-        json.dump({"start": t_awal, "end": t_akhir}, f)
+    save_request({"start": t_awal, "end": t_akhir})
     await update.message.reply_text("Permintaan diterima! Silakan cek website untuk hasilnya.")
 
 async def rank_berdasarkan(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -43,30 +43,60 @@ async def rank_berdasarkan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kata = context.args[0].lower()
     t_awal = context.args[1] + " " + context.args[2]
     t_akhir = context.args[3] + " " + context.args[4]
-    with open(request_file, "w", encoding="utf-8") as f:
-        json.dump({"start": t_awal, "end": t_akhir, "kata": kata}, f)
+    save_request({"start": t_awal, "end": t_akhir, "kata": kata})
     await update.message.reply_text(f"Permintaan ranking berdasarkan kata '{kata}' diterima! Silakan cek website untuk hasilnya.")
 
 async def reset_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        if os.path.exists(request_file):
-            os.remove(request_file)
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=PGUSER,
+            password=PGPASSWORD,
+            host=PGHOST,
+            port=PGPORT
+        )
+        c = conn.cursor()
+        c.execute("DELETE FROM request")
+        conn.commit()
+        c.close()
+        conn.close()
         await update.message.reply_text("Tampilan website sudah direset. Data chat masih aman.")
     except Exception as e:
         await update.message.reply_text(f"Gagal reset tampilan: {e}")
 
 async def reset_2025(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=PGUSER,
+            password=PGPASSWORD,
+            host=PGHOST,
+            port=PGPORT
+        )
+        c = conn.cursor()
         c.execute("DELETE FROM chat")
+        c.execute("DELETE FROM request")
         conn.commit()
+        c.close()
+        conn.close()
         await update.message.reply_text("Data chat pada database berhasil direset (dihapus).")
     except Exception as e:
         await update.message.reply_text(f"Gagal reset data chat: {e}")
 
 async def export_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=PGUSER,
+            password=PGPASSWORD,
+            host=PGHOST,
+            port=PGPORT
+        )
+        c = conn.cursor()
         c.execute("SELECT id, username, content, timestamp, timestamp_wib, level FROM chat ORDER BY timestamp")
         rows = c.fetchall()
+        c.close()
+        conn.close()
         temp_file = "chat_indodax_export.jsonl"
         with open(temp_file, "w", encoding="utf-8") as f:
             for row in rows:
@@ -94,9 +124,19 @@ async def export_waktu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         t_awal = datetime.strptime(waktu_awal, "%Y-%m-%d %H:%M")
         t_akhir = datetime.strptime(waktu_akhir, "%Y-%m-%d %H:%M")
-        hasil = []
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=PGUSER,
+            password=PGPASSWORD,
+            host=PGHOST,
+            port=PGPORT
+        )
+        c = conn.cursor()
         c.execute("SELECT id, username, content, timestamp, timestamp_wib, level FROM chat WHERE timestamp_wib BETWEEN %s AND %s ORDER BY timestamp", (waktu_awal, waktu_akhir))
         rows = c.fetchall()
+        c.close()
+        conn.close()
+        hasil = []
         for row in rows:
             chat = {
                 "id": row[0],
@@ -129,13 +169,12 @@ async def rank_berdasarkan_username(update: Update, context: ContextTypes.DEFAUL
     usernames = [u.lower() for u in context.args[:-4]]
     t_awal = context.args[-4] + " " + context.args[-3]
     t_akhir = context.args[-2] + " " + context.args[-1]
-    with open("last_request.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "usernames": usernames,
-            "start": t_awal,
-            "end": t_akhir,
-            "mode": "username"
-        }, f)
+    save_request({
+        "usernames": usernames,
+        "start": t_awal,
+        "end": t_akhir,
+        "mode": "username"
+    })
     await update.message.reply_text("Permintaan ranking berdasarkan username diterima! Silakan cek website untuk hasilnya.")
 
 if __name__ == "__main__":
