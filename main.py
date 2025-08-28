@@ -178,14 +178,20 @@ async def rank_berdasarkan_username(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text("Permintaan ranking berdasarkan username diterima! Silakan cek website untuk hasilnya.")
 
 async def rank_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 1 or not context.args[0].isdigit():
-        await update.message.reply_text("Format: /rank_level <nomor_level>\nContoh: /rank_level 2")
+    if len(context.args) != 5 or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "Format: /rank_level <nomor_level> YYYY-MM-DD HH:MM YYYY-MM-DD HH:MM\n"
+            "Contoh: /rank_level 2 2025-08-27 00:00 2025-08-27 23:59"
+        )
         return
     level = int(context.args[0])
-    # Simpan filter ke database (tabel request)
-    save_request({"level": level, "mode": "level"})
-    await update.message.reply_text(f"Permintaan ranking berdasarkan level {level} diterima! Silakan cek website untuk hasilnya.")
-
+    t_awal = context.args[1] + " " + context.args[2]
+    t_akhir = context.args[3] + " " + context.args[4]
+    save_request({"level": level, "start": t_awal, "end": t_akhir, "mode": "level"})
+    await update.message.reply_text(
+        f"Permintaan ranking berdasarkan level {level} dan periode {t_awal} s/d {t_akhir} diterima! Silakan cek website untuk hasilnya."
+    )
+    
 if __name__ == "__main__":
     app_telegram = ApplicationBuilder().token(TOKEN).build()
     app_telegram.add_handler(CommandHandler("rank_all", rank_all))
