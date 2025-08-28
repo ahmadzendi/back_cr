@@ -177,6 +177,15 @@ async def rank_berdasarkan_username(update: Update, context: ContextTypes.DEFAUL
     })
     await update.message.reply_text("Permintaan ranking berdasarkan username diterima! Silakan cek website untuk hasilnya.")
 
+async def rank_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await update.message.reply_text("Format: /rank_level <nomor_level>\nContoh: /rank_level 2")
+        return
+    level = int(context.args[0])
+    # Simpan filter ke database (tabel request)
+    save_request({"level": level, "mode": "level"})
+    await update.message.reply_text(f"Permintaan ranking berdasarkan level {level} diterima! Silakan cek website untuk hasilnya.")
+
 if __name__ == "__main__":
     app_telegram = ApplicationBuilder().token(TOKEN).build()
     app_telegram.add_handler(CommandHandler("rank_all", rank_all))
@@ -186,5 +195,6 @@ if __name__ == "__main__":
     app_telegram.add_handler(CommandHandler("export_all", export_all))
     app_telegram.add_handler(CommandHandler("export_waktu", export_waktu))
     app_telegram.add_handler(CommandHandler("rank_berdasarkan_username", rank_berdasarkan_username))
+    app_telegram.add_handler(CommandHandler("rank_level", rank_level))
     print("Bot Telegram aktif...")
     app_telegram.run_polling()
