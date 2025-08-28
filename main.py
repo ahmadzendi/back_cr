@@ -193,7 +193,7 @@ async def rank_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cetak(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Query semua data dari tabel request
+    # Ambil filter terakhir dari tabel request
     conn = psycopg2.connect(
         dbname=POSTGRES_DB,
         user=PGUSER,
@@ -202,25 +202,65 @@ async def cetak(update: Update, context: ContextTypes.DEFAULT_TYPE):
         port=PGPORT
     )
     c = conn.cursor()
-    c.execute("SELECT id, data, updated_at FROM request ORDER BY updated_at DESC")
+    c.execute("SELECT data FROM request ORDER BY updated_at DESC LIMIT 1")
+    row = c.fetchone()
+    if row:
+        req = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    else:
+        req = None
+    if not req:
+        await update.message.reply_text("Belum ada filter ranking yang aktif.")
+        c.close()
+        conn.close()
+        return
+
+    t_awal = req.get("start", "-")
+    t_akhir = req.get("end", "-")
+    usernames = [u.lower() for u in req.get("usernames", [])]
+    mode = req.get("mode", "")
+    kata = req.get("kata", None)
+    level = req.get("level", None)
+
+    query = "SELECT username, content, timestamp_wib, level FROM chat WHERE 1=1"
+    params = []
+    if t_awal != "-" and t_akhir != "-":
+        query += " AND timestamp_wib >= %s AND timestamp_wib <= %s"
+        params.extend([t_awal, t_akhir])
+    if kata:
+        query += " AND LOWER(content) LIKE %s"
+        params.append(f"%{kata}%")
+    if mode == "username" and usernames:
+        query += " AND LOWER(username) = ANY(%s)"
+        params.append(usernames)
+    if mode == "level" and level is not None:
+        query += " AND level = %s"
+        params.append(level)
+    c.execute(query, params)
     rows = c.fetchall()
     c.close()
     conn.close()
 
-    if not rows:
-        await update.message.reply_text("Tabel request kosong.")
+    # Hitung total chat per username
+    user_info = {}
+    for row in rows:
+        uname = row[0].lower()
+        if uname not in user_info:
+            user_info[uname] = 1
+        else:
+            user_info[uname] += 1
+
+    ranking = sorted(user_info.items(), key=lambda x: x[1], reverse=True)
+
+    if not ranking:
+        await update.message.reply_text("Tidak ada data untuk filter saat ini.")
         return
 
     # Format ke file txt
-    filename = "tabel_request.txt"
+    filename = "ranking_chat.txt"
     with open(filename, "w", encoding="utf-8") as f:
-        f.write("id | data | updated_at\n")
-        f.write("-" * 60 + "\n")
-        for row in rows:
-            id_ = row[0]
-            data = row[1] if isinstance(row[1], str) else json.dumps(row[1], ensure_ascii=False)
-            updated_at = row[2]
-            f.write(f"{id_} | {data} | {updated_at}\n")
+        f.write("No | Username | Total Chat\n--------------------------\n")
+        for i, (uname, total) in enumerate(ranking, 1):
+            f.write(f"{i}. {uname} - {total}\n")
 
     # Kirim file ke Telegram
     with open(filename, "rb") as f:
