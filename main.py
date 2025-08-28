@@ -193,16 +193,7 @@ async def rank_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cetak(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Ambil filter dari perintah Telegram (atau pakai default: semua data)
-    # Contoh: /cetak 2025-08-27 00:00 2025-08-27 23:59
-    if len(context.args) == 4:
-        t_awal = context.args[0] + " " + context.args[1]
-        t_akhir = context.args[2] + " " + context.args[3]
-    else:
-        t_awal = "-"
-        t_akhir = "-"
-
-    # Query ke database
+    # Query semua data dari tabel request
     conn = psycopg2.connect(
         dbname=POSTGRES_DB,
         user=PGUSER,
@@ -211,37 +202,25 @@ async def cetak(update: Update, context: ContextTypes.DEFAULT_TYPE):
         port=PGPORT
     )
     c = conn.cursor()
-    query = "SELECT username FROM chat"
-    params = []
-    if t_awal != "-" and t_akhir != "-":
-        query += " WHERE timestamp_wib >= %s AND timestamp_wib <= %s"
-        params.extend([t_awal, t_akhir])
-    c.execute(query, params)
+    c.execute("SELECT id, data, updated_at FROM request ORDER BY updated_at DESC")
     rows = c.fetchall()
     c.close()
     conn.close()
 
-    # Hitung total chat per username
-    user_info = {}
-    for row in rows:
-        uname = row[0].lower()
-        if uname not in user_info:
-            user_info[uname] = 1
-        else:
-            user_info[uname] += 1
-
-    ranking = sorted(user_info.items(), key=lambda x: x[1], reverse=True)
-
-    if not ranking:
-        await update.message.reply_text("Tidak ada data chat untuk periode/filter ini.")
+    if not rows:
+        await update.message.reply_text("Tabel request kosong.")
         return
 
     # Format ke file txt
-    filename = "ranking_chat.txt"
+    filename = "tabel_request.txt"
     with open(filename, "w", encoding="utf-8") as f:
-        f.write("No | Username | Total Chat\n--------------------------\n")
-        for i, (uname, total) in enumerate(ranking, 1):
-            f.write(f"{i}. {uname} - {total}\n")
+        f.write("id | data | updated_at\n")
+        f.write("-" * 60 + "\n")
+        for row in rows:
+            id_ = row[0]
+            data = row[1] if isinstance(row[1], str) else json.dumps(row[1], ensure_ascii=False)
+            updated_at = row[2]
+            f.write(f"{id_} | {data} | {updated_at}\n")
 
     # Kirim file ke Telegram
     with open(filename, "rb") as f:
